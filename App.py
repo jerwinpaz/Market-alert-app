@@ -1,96 +1,136 @@
+import streamlit as st
+import pandas as pd
 import yfinance as yf
-import smtplib
-from email.mime.text import MIMEText
-import numpy as np
+from datetime import datetime, timedelta
 
-# Define market tickers to track
-tickers = {
-    "SP500": "^GSPC",
-    "Russell1000Growth": "IWF",
-    "VIX": "^VIX",
-    "10YrBondYield": "^TNX",
-    "Gold": "GLD",
-    "TechSector": "XLK",
-    "DefensiveSector": "XLU",
-}
+# Title and description
+st.title("AI-Driven Market Alert Portfolio Dashboard")
+st.write(
+    "This app monitors a portfolio of assets and key market indicators, using an AI-driven strategy to alert you when market conditions suggest adjusting your portfolio allocation."
+)
 
-# Function to get market data
-def get_market_data(ticker):
-    data = yf.download(ticker, period="6mo", interval="1d")  # Get 6 months of daily data
-    return data["Close"]
+# Define portfolio components and market indicators
+portfolio_stocks = ["AAPL", "MSFT"]  # Individual stocks
+portfolio_equity_etfs = ["SPY", "QQQ", "IWM", "EEM"]  # Equity indices / ETFs
+sector_etfs = ["XLE", "XLB", "XLI", "XLY", "XLV", "XLF", "XLK", "XLC", "XLRE", "XLU", "XLP"]  # Sector ETFs
+bond_etfs = ["TLT"]  # Treasury bond ETF (20+ Year)
+commodity_etfs = ["GLD"]  # Gold ETF
+market_indicators = ["^VIX", "^TNX"]  # Volatility Index (VIX) and 10-Year Treasury Yield index
 
-# Fetch latest data
-market_data = {key: get_market_data(ticker) for key, ticker in tickers.items()}
+# Combine all tickers for data fetching
+all_tickers = portfolio_stocks + portfolio_equity_etfs + sector_etfs + bond_etfs + commodity_etfs + market_indicators
 
-# Calculate signals
-def calculate_signals(data):
-    signals = {}
+# Define date range for historical data
+end_date = datetime.now()
+start_date = end_date - timedelta(days=600)  # Approx. last 600 days (~2 years of data)
 
-    # Momentum indicators
-    signals["SP500_Above_200DMA"] = data["SP500"][-1] > data["SP500"].rolling(200).mean()[-1]
-    signals["Russell1000Growth_3M_Change"] = (data["Russell1000Growth"][-1] - data["Russell1000Growth"][-63]) / data["Russell1000Growth"][-63]
+# Use caching to avoid redundant data fetches
+@st.cache_data(ttl=3600)  # Cache data for 1 hour
+def load_data(tickers, start, end):
+    # Fetch data with auto_adjust=False to ensure 'Adj Close' exists
+    data = yf.download(tickers, start=start, end=end, auto_adjust=False)
 
-    # Volatility & risk signals
-    signals["VIX_Above_25"] = data["VIX"][-1] > 25
-    signals["Gold_Strength"] = data["Gold"][-1] > data["Gold"].rolling(50).mean()[-1]  # Gold above 50-day MA
-    signals["Bond_Yield_Spike"] = data["10YrBondYield"][-1] > data["10YrBondYield"].rolling(50).mean()[-1]
+    # Flatten column index if MultiIndex is present
+    if isinstance(data.columns, pd.MultiIndex):
+        data.columns = data.columns.get_level_values(1)
 
-    # Sector Strength
-    signals["Tech_Leading"] = data["TechSector"][-1] > data["DefensiveSector"][-1]
+    # Debugging: Print available columns to verify
+    print("Available columns:", data.columns)
 
-    return signals
+    # Return only 'Adj Close' prices
+    return data["Adj Close"]
 
-# Generate signals
-signals = calculate_signals(market_data)
+# Refresh button to manually update data
+if st.button("🔄 Refresh Data"):
+    load_data.clear()   # Clear cached data
+    st.rerun()
 
-# Define alert logic
-alert_messages = []
+# Load data (using cache if available)
+prices = load_data(all_tickers, start_date, end_date)
 
-if not signals["SP500_Above_200DMA"]:
-    alert_messages.append("🔴 S&P 500 below 200-day moving average: Consider shifting defensive.")
+# Calculate 200-day moving average for each asset
+ma200 = prices.rolling(window=200).mean()
 
-if signals["Russell1000Growth_3M_Change"] < -0.05:
-    alert_messages.append("⚠️ Russell 1000 Growth dropped over 5% in 3 months: Risk-off.")
+# Get the latest price and 200-day MA for each ticker
+latest_prices = prices.iloc[-1]
+latest_ma200 = ma200.iloc[-1]
 
-if signals["VIX_Above_25"]:
-    alert_messages.append("🚨 VIX above 25: High volatility, shift to bonds/gold.")
+# Function to determine momentum status relative to 200-day MA
+def momentum_status(ticker):
+    price = latest_prices[ticker]
+    ma = latest_ma200[ticker]
+    if pd.isna(ma):
+        return "No data"
+    if price >= ma:
+        diff = (price - ma) / ma * 100
+        return f"🔺 Above 200-day MA by {diff:.1f}%"
+    else:
+        diff = (ma - price) / ma * 100
+        return f"🔻 Below 200-day MA by {diff:.1f}%"
 
-if signals["Gold_Strength"]:
-    alert_messages.append("🔶 Gold gaining strength: Possible risk-off move ahead.")
+# Portfolio overview & momentum signals
+st.header("Portfolio Overview & Momentum Signals")
 
-if signals["Bond_Yield_Spike"]:
-    alert_messages.append("📈 Rising bond yields: Possible inflation fears, reduce long-duration bonds.")
+st.subheader("Stocks")
+for ticker in portfolio_stocks:
+    st.write(f"{ticker}: Price ${latest_prices[ticker]:.2f} — {momentum_status(ticker)}")
 
-if signals["Tech_Leading"]:
-    alert_messages.append("🚀 Tech sector outperforming: Favor growth exposure.")
+st.subheader("Equity Indices / ETFs")
+for ticker in portfolio_equity_etfs:
+    st.write(f"{ticker}: Price ${latest_prices[ticker]:.2f} — {momentum_status(ticker)}")
 
-# If any alerts exist, send an email
-if alert_messages:
-    alert_text = "\n".join(alert_messages)
+st.subheader("Bonds & Commodities")
+for ticker in bond_etfs + commodity_etfs:
+    st.write(f"{ticker}: Price ${latest_prices[ticker]:.2f} — {momentum_status(ticker)}")
 
-    # Email setup
-    sender_email = "your_email@example.com"
-    receiver_email = "your_email@example.com"
-    subject = "⚠️ Market Alert: Portfolio Adjustment Suggested"
-    msg = MIMEText(alert_text)
-    msg["Subject"] = subject
-    msg["From"] = sender_email
-    msg["To"] = receiver_email
+# AI-driven alerts for portfolio adjustments
+st.header("AI-Driven Alerts & Portfolio Adjustments")
+alerts = []
 
-    # Send email (Replace with your SMTP server credentials)
-    try:
-        server = smtplib.SMTP_SSL("smtp.gmail.com", 465)
-        server.login("your_email@example.com", "your_password")
-        server.sendmail(sender_email, receiver_email, msg.as_string())
-        server.quit()
-        print("✅ Market alert email sent successfully.")
-    except Exception as e:
-        print(f"❌ Error sending email: {e}")
+# Momentum-based alerts using SPY as a broad market proxy
+spy_price = latest_prices.get("SPY")
+spy_ma = latest_ma200.get("SPY")
+if spy_price is not None and not pd.isna(spy_ma):
+    if spy_price < spy_ma:
+        alerts.append("SPY **fell below** its 200-day moving average. This signals weakening market momentum.")
+    else:
+        alerts.append("SPY **remains above** its 200-day moving average, signaling continued strength.")
 
-# Print alerts to console
-if alert_messages:
-    print("⚡ Market Alerts Generated ⚡")
-    for alert in alert_messages:
-        print(alert)
+# Volatility (VIX) alerts
+vix_level = latest_prices["^VIX"]
+if vix_level > 20:
+    if vix_level >= 30:
+        alerts.append(f"Market volatility is **very high** (VIX ≈ {vix_level:.1f}). Consider hedging.")
+    else:
+        alerts.append(f"Market volatility is elevated (VIX ≈ {vix_level:.1f}). Caution advised.")
+
+# Bond yield alerts
+tnx_index = latest_prices["^TNX"]
+ten_year_yield = tnx_index / 10.0
+if ten_year_yield >= 4.0:
+    alerts.append(f"10-Year Treasury yield is **{ten_year_yield:.2f}%**, which may pressure equities.")
+
+# Sector leadership alerts (Discretionary vs Staples)
+xly_above = latest_prices.get("XLY", 0) >= latest_ma200.get("XLY", float('nan'))
+xlp_above = latest_prices.get("XLP", 0) >= latest_ma200.get("XLP", float('nan'))
+if xly_above and not xlp_above:
+    alerts.append("Consumer Discretionary (XLY) is strong, suggesting **Risk-On** sentiment.")
+elif xlp_above and not xly_above:
+    alerts.append("Consumer Staples (XLP) is outperforming, signaling **Risk-Off** positioning.")
+
+# Safe-haven bond alert
+tlt_price = latest_prices.get("TLT")
+tlt_ma = latest_ma200.get("TLT")
+if tlt_price is not None and spy_price is not None and not pd.isna(tlt_ma) and not pd.isna(spy_ma):
+    if tlt_price > tlt_ma and spy_price < spy_ma:
+        alerts.append("Treasury bonds (TLT) are in an uptrend while equities are weak – a possible flight to safety.")
+
+# Display alerts
+if alerts:
+    for alert in alerts:
+        if "Risk-Off" in alert or "caution" in alert or "pressure" in alert:
+            st.warning("🔔 " + alert)
+        else:
+            st.success("🔔 " + alert)
 else:
-    print("✅ No major market alerts today.")
+    st.info("✅ No immediate alerts. The portfolio aligns with current market conditions.")
