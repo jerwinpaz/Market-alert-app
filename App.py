@@ -3,14 +3,20 @@ import yfinance as yf
 import pandas as pd
 import requests
 from fredapi import Fred
-from newspaper import Article
 from textblob import TextBlob
 
-# 🔹 Replace this with your actual FRED API Key (Free for basic access)
-FRED_API_KEY = "REPLACE_WITH_YOUR_KEY"  # Optional (not required for public data)
+# 🔹 OPTIONAL: Remove `newspaper3k` if errors persist
+try:
+    from newspaper import Article
+    NEWS_ENABLED = True
+except ImportError:
+    NEWS_ENABLED = False
+
+# 🔹 Replace with FRED API Key (Not required for public data)
+FRED_API_KEY = "REPLACE_WITH_YOUR_KEY"
 fred = Fred(api_key=FRED_API_KEY) if FRED_API_KEY else None
 
-# 🔹 List of key economic indicators (from FRED)
+# 📊 Economic Indicators
 ECONOMIC_INDICATORS = {
     "Inflation (CPI)": "CPIAUCSL",
     "Fed Funds Rate": "FEDFUNDS",
@@ -19,19 +25,22 @@ ECONOMIC_INDICATORS = {
     "PMI (Manufacturing)": "ISMPMI"
 }
 
-# 📈 Function to Fetch Economic Data
+# 📊 Fetch Economic Data
 def get_economic_data():
     data = {}
     if fred:
         for key, series in ECONOMIC_INDICATORS.items():
             try:
                 data[key] = fred.get_series_latest_n(series, 1)[0]
-            except Exception as e:
+            except Exception:
                 data[key] = "N/A"
     return data
 
-# 📰 Function to Scrape and Analyze News Sentiment
+# 📰 Fetch News Sentiment (With Error Handling)
 def get_news_sentiment():
+    if not NEWS_ENABLED:
+        return {"Sentiment": "N/A", "Score": 0, "Headlines": ["News Scraping Disabled"]}
+
     url = "https://finance.yahoo.com/"
     try:
         article = Article(url)
@@ -39,20 +48,17 @@ def get_news_sentiment():
         article.parse()
         article.nlp()
         
-        # Extract headlines
         headlines = article.keywords[:5]
-        
-        # Sentiment scoring
         sentiment_scores = [TextBlob(headline).sentiment.polarity for headline in headlines]
         avg_sentiment = sum(sentiment_scores) / len(sentiment_scores) if sentiment_scores else 0
 
         sentiment_label = "Bullish" if avg_sentiment > 0 else "Bearish" if avg_sentiment < 0 else "Neutral"
         return {"Sentiment": sentiment_label, "Score": round(avg_sentiment, 3), "Headlines": headlines}
 
-    except Exception as e:
-        return {"Sentiment": "N/A", "Score": 0, "Headlines": []}
+    except Exception:
+        return {"Sentiment": "N/A", "Score": 0, "Headlines": ["Failed to fetch news"]}
 
-# 📊 Function to Fetch Market Data (Existing Code)
+# 📈 Fetch Market Data
 def get_market_data(tickers):
     data = {}
     for ticker in tickers:
@@ -63,12 +69,12 @@ def get_market_data(tickers):
             data[ticker] = None
     return data
 
-# 🔺 Market Triggers (Including Economic & Sentiment Analysis)
+# 🔺 Market Analysis
 def analyze_market_conditions(market_data, econ_data, news_sentiment):
     spy_price = market_data.get("SPY", 0)
     vix = market_data.get("^VIX", 0)
-    tnx = market_data.get("^TNX", 0) / 10.0  # Convert to percentage
-    
+    tnx = market_data.get("^TNX", 0) / 10.0  
+
     inflation = econ_data.get("Inflation (CPI)", 0)
     fed_rate = econ_data.get("Fed Funds Rate", 0)
     sentiment_score = news_sentiment.get("Score", 0)
@@ -76,7 +82,6 @@ def analyze_market_conditions(market_data, econ_data, news_sentiment):
     alerts = []
     signal = "Neutral"
 
-    # Market Risk Signals
     if spy_price and spy_price > spy_price * 1.002:
         if vix < 15 and tnx < 3:
             signal = "Bullish"
@@ -85,10 +90,9 @@ def analyze_market_conditions(market_data, econ_data, news_sentiment):
             signal = "High Volatility"
             alerts.append("High Volatility: Consider reducing equity exposure")
 
-    # Economic Risk Signals
     if inflation > 4 and fed_rate > 5:
         alerts.append("🛑 Inflation Risk: Adjust bond allocation")
-    
+
     if sentiment_score < -0.2:
         alerts.append("🔴 Bearish News Sentiment: Consider defensive positioning")
 
