@@ -27,11 +27,19 @@ start_date = end_date - timedelta(days=600)  # approx. last 600 days (~2 years o
 
 # Use caching to avoid redundant data fetches
 @st.cache_data(ttl=3600)  # cache data for 1 hour
+@st.cache_data(ttl=3600)
 def load_data(tickers, start, end):
-    # Fetch adjusted close prices for the given tickers and date range
-    data = yf.download(tickers, start=start, end=end)
-    return data["Adj Close"]
+    # Fetch data with auto_adjust=False to ensure 'Adj Close' exists
+    data = yf.download(tickers, start=start, end=end, auto_adjust=False)
 
+    # Flatten column index if MultiIndex is present
+    if isinstance(data.columns, pd.MultiIndex):
+        data.columns = data.columns.get_level_values(1)
+
+    # Debugging: Print available columns to verify
+    print("Available columns:", data.columns)
+
+    return data["Adj Close"]  # ✅ Now this should work correctly
 # Refresh button to manually update data
 if st.button("🔄 Refresh Data"):
     load_data.clear()   # clear cached data
