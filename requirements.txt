@@ -1,2 +1,4 @@
 yfinance
-twilio
+fredapi
+newspaper3k
+textblob
