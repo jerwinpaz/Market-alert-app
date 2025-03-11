@@ -38,7 +38,7 @@ def load_data(tickers, start, end):
     print("Available columns:", data.columns)
 
     # Return only 'Adj Close' prices
-    return data["Adj Close"]
+    return data  # ✅ Returns the full dataframe with tickers as columns
 
 # Refresh button to manually update data
 if st.button("🔄 Refresh Data"):
