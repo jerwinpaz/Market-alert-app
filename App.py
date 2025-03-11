@@ -35,7 +35,7 @@ def load_data(tickers, start, end):
 # Refresh button to manually update data
 if st.button("🔄 Refresh Data"):
     load_data.clear()   # clear cached data
-    st.experimental_rerun()
+    st.rerun()
 
 # Load data (using cache if available)
 prices = load_data(all_tickers, start_date, end_date)
