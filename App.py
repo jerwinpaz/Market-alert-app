@@ -1,10 +1,6 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import requests
-
-# 🔹 Replace this with your Zapier Webhook URL
-ZAPIER_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/YOUR_WEBHOOK_ID/"
 
 # 🔹 Define tickers to monitor in real-time
 monitored_tickers = ["SPY", "^VIX", "^TNX"]
@@ -20,12 +16,6 @@ def fetch_real_time_data(tickers):
     except Exception as e:
         st.error(f"Error fetching real-time data: {e}")
     return data
-
-# 🔹 Function to send email alerts via Zapier Webhook
-def send_email_alert(subject, message):
-    payload = {"subject": subject, "message": message}
-    response = requests.post(ZAPIER_WEBHOOK_URL, json=payload)
-    return response.status_code
 
 # 🔹 Function to analyze market conditions & trigger alerts
 def analyze_market_conditions(data):
@@ -55,7 +45,7 @@ def analyze_market_conditions(data):
 st.title("📡 AI-Driven Market Alert System")
 
 # 🔹 Fetch real-time data
-st.subheader("Live Market Data")
+st.subheader("📊 Live Market Data")
 real_time_prices = fetch_real_time_data(monitored_tickers)
 
 # ✅ FIX: Convert real-time data into a clean DataFrame & handle missing values
@@ -67,19 +57,27 @@ if real_time_prices:
 # 🔹 Analyze market conditions
 signal, alerts = analyze_market_conditions(real_time_prices)
 
-# 🔹 Display alerts
-st.subheader("📊 Market Alerts & Signals")
+# 🔹 Display alerts directly in the app
+st.subheader("📢 Active Alerts")
 for alert in alerts:
-    st.warning(alert)
+    if "Bullish" in alert:
+        st.success(alert)  # Green for bullish
+    elif "Bearish" in alert:
+        st.error(alert)  # Red for bearish
+    else:
+        st.warning(alert)  # Neutral (gray)
 
-# 🔹 Send email notification if a major shift occurs
-if signal != "Neutral":
-    alert_message = f"🚨 Market Alert: {signal} signal detected. {alerts[0]}"
-    
-    # Send Email Alert
-    email_status = send_email_alert(f"Market Alert: {signal}", alert_message)
+# 🔹 Alert Log: Keep track of previous alerts
+if "alert_log" not in st.session_state:
+    st.session_state.alert_log = []
 
-    st.write(f"📩 Email Status: {email_status}")
+# Add new alert to the log
+st.session_state.alert_log.append(f"{signal} - {alerts[0]}")
+
+# Display the last 5 alerts
+st.subheader("📜 Recent Alerts")
+for log in st.session_state.alert_log[-5:]:  # Show last 5 alerts
+    st.write(log)
 
 # 🔹 Refresh Button to manually update
 if st.button("🔄 Refresh Market Data"):
