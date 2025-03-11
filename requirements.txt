@@ -2,3 +2,4 @@ yfinance
 fredapi
 newspaper3k
 textblob
+lxml[html_clean]
