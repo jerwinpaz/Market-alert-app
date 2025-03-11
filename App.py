@@ -2,7 +2,6 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import requests
-from twilio.rest import Client
 
 # 🔹 Replace this with your Zapier Webhook URL
 ZAPIER_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/YOUR_WEBHOOK_ID/"
@@ -27,22 +26,6 @@ def send_email_alert(subject, message):
     payload = {"subject": subject, "message": message}
     response = requests.post(ZAPIER_WEBHOOK_URL, json=payload)
     return response.status_code
-
-# 🔹 Function to send SMS alerts via Twilio
-def send_sms_alert(message):
-    account_sid = st.secrets["TWILIO_ACCOUNT_SID"]
-    auth_token = st.secrets["TWILIO_AUTH_TOKEN"]
-    client = Client(account_sid, auth_token)
-
-    twilio_number = st.secrets["TWILIO_PHONE_NUMBER"]
-    recipient_number = st.secrets["MY_PHONE_NUMBER"]
-
-    message = client.messages.create(
-        body=message,
-        from_=twilio_number,
-        to=recipient_number
-    )
-    return message.sid
 
 # 🔹 Function to analyze market conditions & trigger alerts
 def analyze_market_conditions(data):
@@ -85,18 +68,14 @@ st.subheader("📊 Market Alerts & Signals")
 for alert in alerts:
     st.warning(alert)
 
-# 🔹 Send notifications if a major shift occurs
+# 🔹 Send email notification if a major shift occurs
 if signal != "Neutral":
     alert_message = f"🚨 Market Alert: {signal} signal detected. {alerts[0]}"
     
     # Send Email Alert
     email_status = send_email_alert(f"Market Alert: {signal}", alert_message)
 
-    # Send SMS Alert
-    sms_status = send_sms_alert(alert_message)
-
     st.write(f"📩 Email Status: {email_status}")
-    st.write(f"📲 SMS Status: {sms_status}")
 
 # 🔹 Refresh Button to manually update
 if st.button("🔄 Refresh Market Data"):
