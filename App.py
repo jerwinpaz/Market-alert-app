@@ -72,7 +72,7 @@ st.header("Portfolio Overview & Momentum Signals")
 
 st.subheader("Stocks")
 for ticker in portfolio_stocks:
-    st.write(f"{ticker}: Price ${latest_prices[ticker]:.2f} — {momentum_status(ticker)}")
+    st.write(f"{ticker}: Price ${latest_prices[ticker].iloc[-1]:.2f} — {momentum_status(ticker)}")
 
 st.subheader("Equity Indices / ETFs")
 for ticker in portfolio_equity_etfs:
