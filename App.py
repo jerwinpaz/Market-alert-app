@@ -1,61 +1,40 @@
-import streamlit as st
 import yfinance as yf
-import numpy as np
+import streamlit as st
 
-# Define tickers to track
-tickers = {
-    "S&P 500": "^GSPC",
-    "Russell 1000 Growth": "IWF",
-    "VIX": "^VIX",
-    "10Yr Bond Yield": "^TNX",
-    "Gold": "GLD",
-    "Tech Sector": "XLK",
-    "Defensive Sector": "XLU",
-}
+def get_market_data(symbol):
+    """Fetch current market data (live price if available, else last close) and options data."""
+    try:
+        ticker = yf.Ticker(symbol)
+        # Try to fetch intraday data for the current trading day (1-minute interval)
+        intraday_data = ticker.history(period="1d", interval="1m")
+        if not intraday_data.empty:
+            # Market is open or recent data is available; use the latest price
+            current_price = intraday_data["Close"].iloc[-1]
+        else:
+            # Market is closed or no intraday data; fall back to last closing price
+            last_close_data = ticker.history(period="1d")  # 1d period gives the latest trading day's data
+            current_price = last_close_data["Close"].iloc[-1] if not last_close_data.empty else None
 
-# Function to get market data
-def get_market_data(ticker):
-    data = yf.download(ticker, period="6mo", interval="1d")["Close"]
-    return data
+        # (Optional) You can round or format current_price here if needed
+        # current_price = round(current_price, 2)  # for example
 
-# Fetch market data
-market_data = {key: get_market_data(ticker) for key, ticker in tickers.items()}
+        # Example additional data (if needed in the app)
+        risk_free_rate = 0.05  # Placeholder risk-free rate
+        options_dates = ticker.options  # Available options expiration dates
 
-# Calculate signals
-def calculate_signals(data):
-    signals = {}
-    signals["S&P 500 Above 200DMA"] = data["S&P 500"][-1] > data["S&P 500"].rolling(200).mean()[-1]
-    signals["Russell 1000 Growth 3M Change"] = (data["Russell 1000 Growth"][-1] - data["Russell 1000 Growth"][-63]) / data["Russell 1000 Growth"][-63]
-    signals["VIX Above 25"] = data["VIX"][-1] > 25
-    signals["Gold Strength"] = data["Gold"][-1] > data["Gold"].rolling(50).mean()[-1]
-    signals["Bond Yield Spike"] = data["10Yr Bond Yield"][-1] > data["10Yr Bond Yield"].rolling(50).mean()[-1]
-    signals["Tech Outperforming Defensive"] = data["Tech Sector"][-1] > data["Defensive Sector"][-1]
-    return signals
+        return {
+            "current_price": current_price,
+            "risk_free_rate": risk_free_rate,
+            "options_dates": options_dates
+        }
+    except Exception as e:
+        st.error(f"Error fetching market data: {e}")
+        return None
 
-# Generate signals
-signals = calculate_signals(market_data)
-
-# Streamlit UI
-st.title("📈 AI-Driven Market Alert Dashboard")
-st.markdown("🚀 **Live Market Monitoring** – AI-driven insights for portfolio rebalancing.")
-
-st.subheader("📊 Market Signals")
-for signal, value in signals.items():
-    emoji = "✅" if value else "❌"
-    st.write(f"{emoji} **{signal}:** {'Yes' if value else 'No'}")
-
-# Display latest prices
-st.subheader("🔍 Market Data")
-for asset, data in market_data.items():
-    st.write(f"**{asset}:** ${round(data[-1], 2)}")
-
-# Alert recommendation
-st.subheader("⚠️ Suggested Portfolio Adjustment")
-if signals["S&P 500 Above 200DMA"] and signals["Russell 1000 Growth 3M Change"] > 0:
-    st.success("✅ Market is in a **strong uptrend**. Maintain growth exposure (IVW, QQQ, SPY).")
-elif signals["VIX Above 25"]:
-    st.warning("🚨 High volatility detected! Consider shifting **20-30% to defensive assets (TLT, GLD, XLU).**")
-elif not signals["S&P 500 Above 200DMA"]:
-    st.error("🔴 Market trend is bearish. Reduce risk exposure & increase defensive positions.")
-
-st.markdown("📩 **Want notifications?** Use [IFTTT](https://ifttt.com) to set up SMS/email alerts!")
+# Example usage within the Streamlit app:
+symbol = st.text_input("Enter a stock ticker symbol:", "AAPL")
+if symbol:
+    data = get_market_data(symbol)
+    if data:
+        st.write(f"**Current Price for {symbol}:** {data['current_price']}")
+        # Continue using data['risk_free_rate'] or data['options_dates'] as needed
