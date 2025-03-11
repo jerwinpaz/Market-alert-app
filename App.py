@@ -25,20 +25,34 @@ end_date = datetime.now()
 start_date = end_date - timedelta(days=600)  # Approx. last 600 days (~2 years of data)
 
 # Use caching to avoid redundant data fetches
+import time
+import streamlit as st
+import pandas as pd
+import yfinance as yf
+from datetime import datetime, timedelta
+
 @st.cache_data(ttl=3600)  # Cache data for 1 hour
-def load_data(tickers, start, end):
-    # Fetch historical data with auto_adjust=False to get actual adjusted close prices
-    data = yf.download(tickers, start=start, end=end, auto_adjust=False)
+def load_data(tickers, start, end, retries=3, delay=5):
+    """Fetches market data from Yahoo Finance with error handling."""
+    for attempt in range(retries):
+        try:
+            data = yf.download(tickers, start=start, end=end, auto_adjust=False)
 
-    # Flatten MultiIndex columns if present
-    if isinstance(data.columns, pd.MultiIndex):
-        data.columns = data.columns.get_level_values(1)
+            # Flatten MultiIndex columns if present
+            if isinstance(data.columns, pd.MultiIndex):
+                data.columns = data.columns.get_level_values(1)
 
-    # Debugging: Print available columns
-    print("Available columns:", data.columns)
+            # Print available columns for debugging
+            print("Available columns:", data.columns)
 
-    return data  # ✅ Return the full dataframe instead of "Adj Close"
+            return data  # ✅ Return full dataframe
 
+        except Exception as e:
+            print(f"Error fetching data (Attempt {attempt+1}/{retries}): {e}")
+            time.sleep(delay)  # Wait before retrying
+
+    print("❌ Failed to fetch data after multiple attempts.")
+    return pd.DataFrame()  # Return empty DataFrame if fetch fails
 # Refresh button to manually update data
 if st.button("🔄 Refresh Data"):
     load_data.clear()   # Clear cached data
