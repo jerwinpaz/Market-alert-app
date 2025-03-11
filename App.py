@@ -91,4 +91,4 @@ for log in st.session_state.alert_log[-5:]:  # Show last 5 alerts
 
 # 🔹 Refresh Button to manually update
 if st.button("🔄 Refresh Market Data"):
-    st.experimental_rerun()
+    st.rerun()
